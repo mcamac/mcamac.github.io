@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:wfw="http://wellformedweb.org/CommentAPI/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>m.artin.io</title>
+    <atom:link href="http://localhost:8080/feed.xml" rel="self" type="application/rss+xml"></atom:link>
+    <link>http://localhost:8080</link>
+    <description></description>
+    <pubDate>Sun, 26 Apr 2015 20:00:00 -0400</pubDate>
+    <generator>Wintersmith - https://github.com/jnordberg/wintersmith</generator>
+    <language>en</language>
+    <item>
+      <title>Javascript Snippets: Immutable Lists</title>
+      <link>http://localhost:8080/articles/immutable-1/</link>
+      <pubDate>Sun, 26 Apr 2015 20:00:00 -0400</pubDate>
+      <guid isPermaLink="true">http://localhost:8080/articles/immutable-1/</guid>
+      <author></author>
+      <description>&lt;p&gt;With the recent popularity of view frameworks such as React and Mercury, immutable data structures
+have become widespread choices for storing UI state. In this short post, we’ll examine the motivation for
+maintaining immutability and build a simple snippet for constructing reasonably performant immutable lists. For
+production usage, check out Facebook’s &lt;a href=&quot;https://github.com/facebook/immutable-js&quot;&gt;immutable.js&lt;/a&gt;.&lt;/p&gt;
+&lt;h2 id=&quot;why-immutability-&quot;&gt;Why Immutability?&lt;/h2&gt;
+&lt;p&gt;In various view frameworks, view functions are just plain Javascript functions which take a object representing state
+and return a virtual HTML tree:&lt;/p&gt;
+&lt;pre&gt;&lt;code class=&quot;lang-javascript&quot;&gt;&lt;span class=&quot;function&quot;&gt;&lt;span class=&quot;keyword&quot;&gt;function&lt;/span&gt; &lt;span class=&quot;title&quot;&gt;listView&lt;/span&gt;&lt;span class=&quot;params&quot;&gt;(list)&lt;/span&gt; {&lt;/span&gt;
+  &lt;span class=&quot;keyword&quot;&gt;return&lt;/span&gt; h(&lt;span class=&quot;string&quot;&gt;'ul'&lt;/span&gt;, list.map(item =&amp;gt; h(&lt;span class=&quot;string&quot;&gt;'li'&lt;/span&gt;, item)));
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;If &lt;code&gt;listView&lt;/code&gt; is used as a component of a large web-app, the &lt;code&gt;list&lt;/code&gt; argument may be a nested property
+of a more complex state object. When the contents of &lt;code&gt;list&lt;/code&gt; change, we want to re-render the list to
+reflect the new state, but when other properties of that object change, it would be nice to not
+have to re-compute the list view.&lt;/p&gt;
+&lt;p&gt;In the second case, how can we see if the &lt;code&gt;list&lt;/code&gt; argument has changed in a performant fashion? If &lt;code&gt;list&lt;/code&gt; is a plain
+Javascript array and gets mutated elsewhere by &lt;code&gt;list[i] = val&lt;/code&gt;, then the equality value of &lt;code&gt;list&lt;/code&gt;
+itself has not changed. Thus, we can’t do a simple object equality &lt;code&gt;===&lt;/code&gt; check but instead need the
+previous contents of the list, and equality checking would be $O(n)$ in the length
+of the list.&lt;/p&gt;
+&lt;p&gt;Instead, we may be willing to take a slight performance hit on gets, sets, and iteration as long as equality
+checking takes constant time. We can use immutable data structures: structures type of &lt;code&gt;T&lt;/code&gt; such that
+&lt;code&gt;T.set&lt;/code&gt; returns a new object of type &lt;code&gt;T&lt;/code&gt; (if the set changes the contents).&lt;/p&gt;
+&lt;h2 id=&quot;a-naive-implementation&quot;&gt;A Naive Implementation&lt;/h2&gt;
+&lt;p&gt;Below is a naive implementation where the list is copied&lt;/p&gt;
+&lt;pre&gt;&lt;code class=&quot;lang-javascript&quot;&gt;&lt;span class=&quot;keyword&quot;&gt;class&lt;/span&gt; List {
+  constructor(array) {
+    &lt;span class=&quot;keyword&quot;&gt;this&lt;/span&gt;.array = array;
+  }
+
+  get(key) {
+    &lt;span class=&quot;keyword&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;keyword&quot;&gt;this&lt;/span&gt;.array[key];
+  }
+
+  set(key, val) {
+    &lt;span class=&quot;keyword&quot;&gt;var&lt;/span&gt; newArray = &lt;span class=&quot;keyword&quot;&gt;this&lt;/span&gt;.array.slice();
+    newArray[key] = val;
+    &lt;span class=&quot;keyword&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;keyword&quot;&gt;new&lt;/span&gt; List(newArray);
+  }
+
+  iter*() {
+    &lt;span class=&quot;keyword&quot;&gt;for&lt;/span&gt; (&lt;span class=&quot;keyword&quot;&gt;var&lt;/span&gt; i = &lt;span class=&quot;number&quot;&gt;0&lt;/span&gt;; i &amp;lt; &lt;span class=&quot;keyword&quot;&gt;this&lt;/span&gt;.array.length; i++) {
+      &lt;span class=&quot;keyword&quot;&gt;yield&lt;/span&gt; &lt;span class=&quot;keyword&quot;&gt;this&lt;/span&gt;.array[i];
+    }
+  }
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Note here that while &lt;code&gt;get&lt;/code&gt; is $O(1)$, &lt;code&gt;set&lt;/code&gt; is $O(n)$ in the length of the list. Can we do better?&lt;/p&gt;
+&lt;h2 id=&quot;trees&quot;&gt;Trees&lt;/h2&gt;
+&lt;p&gt;How can we improve the performance of &lt;code&gt;set&lt;/code&gt;? Note that above, we are forced to copy the entire list
+into a new list. If we change our underlying data structure from a flat list to a tree, it turns out
+that we can get $O(\log n)$ sets.&lt;/p&gt;
+&lt;p&gt;There are two caveats: the first is that using trees slows gets to $O(\log n)$,
+and the second is that we incur a possibly nontrivial constant factor (around equal to branch size)
+for sets since we must copy the unchanged children of every tree node we touch.&lt;/p&gt;
+&lt;pre&gt;&lt;code class=&quot;lang-javascript&quot;&gt;&lt;span class=&quot;keyword&quot;&gt;var&lt;/span&gt; BRANCH = &lt;span class=&quot;number&quot;&gt;8&lt;/span&gt;;
+&lt;span class=&quot;keyword&quot;&gt;var&lt;/span&gt; BRANCH_EXP = &lt;span class=&quot;number&quot;&gt;3&lt;/span&gt;; &lt;span class=&quot;comment&quot;&gt;// 2^3 = 8 - used for bit shifts.&lt;/span&gt;
+&lt;span class=&quot;keyword&quot;&gt;class&lt;/span&gt; Tree {
+  constructor() {
+    &lt;span class=&quot;keyword&quot;&gt;this&lt;/span&gt;.children = [];
+    &lt;span class=&quot;keyword&quot;&gt;this&lt;/span&gt;.depth = &lt;span class=&quot;number&quot;&gt;0&lt;/span&gt;;
+  }
+
+  get(key) {
+    &lt;span class=&quot;keyword&quot;&gt;if&lt;/span&gt; (&lt;span class=&quot;keyword&quot;&gt;this&lt;/span&gt;.depth === &lt;span class=&quot;number&quot;&gt;0&lt;/span&gt; &amp;amp;&amp;amp; key &amp;lt; BRANCH) {
+      &lt;span class=&quot;keyword&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;keyword&quot;&gt;this&lt;/span&gt;.children[key];
+    } &lt;span class=&quot;keyword&quot;&gt;else&lt;/span&gt; {
+      &lt;span class=&quot;keyword&quot;&gt;var&lt;/span&gt; shift = BRANCH_EXP * &lt;span class=&quot;keyword&quot;&gt;this&lt;/span&gt;.depth;
+      &lt;span class=&quot;keyword&quot;&gt;var&lt;/span&gt; childSize = &lt;span class=&quot;number&quot;&gt;1&lt;/span&gt; &amp;lt;&amp;lt; shift;
+      &lt;span class=&quot;keyword&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;keyword&quot;&gt;this&lt;/span&gt;.children[key &amp;gt;&amp;gt;&amp;gt; shift].get(key % childSize);
+    }
+  }
+
+  set(key, val) {
+    &lt;span class=&quot;keyword&quot;&gt;var&lt;/span&gt; newChildren = &lt;span class=&quot;keyword&quot;&gt;this&lt;/span&gt;.children.slice();
+    &lt;span class=&quot;keyword&quot;&gt;if&lt;/span&gt; (&lt;span class=&quot;keyword&quot;&gt;this&lt;/span&gt;.depth === &lt;span class=&quot;number&quot;&gt;0&lt;/span&gt; &amp;amp;&amp;amp; key &amp;lt; BRANCH) {
+      newChildren[key] = val;
+    } &lt;span class=&quot;keyword&quot;&gt;else&lt;/span&gt; {
+      &lt;span class=&quot;keyword&quot;&gt;var&lt;/span&gt; shift = BRANCH_EXP * &lt;span class=&quot;keyword&quot;&gt;this&lt;/span&gt;.depth;
+      &lt;span class=&quot;keyword&quot;&gt;var&lt;/span&gt; childSize = &lt;span class=&quot;number&quot;&gt;1&lt;/span&gt; &amp;lt;&amp;lt; shift;
+      &lt;span class=&quot;keyword&quot;&gt;var&lt;/span&gt; childIndex = key &amp;gt;&amp;gt;&amp;gt; shift;
+      newChildren[childIndex] = newChildren[childIndex].set(key % childSize, val);
+    }
+    &lt;span class=&quot;keyword&quot;&gt;return&lt;/span&gt; newChildren;
+  }
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;We can now define the &lt;code&gt;List&lt;/code&gt; class as follows:&lt;/p&gt;
+&lt;pre&gt;&lt;code class=&quot;lang-javascript&quot;&gt;&lt;span class=&quot;keyword&quot;&gt;class&lt;/span&gt; List {
+  constructor(array) {
+    &lt;span class=&quot;keyword&quot;&gt;if&lt;/span&gt; (array isinstance Tree) {
+      &lt;span class=&quot;keyword&quot;&gt;this&lt;/span&gt;.tree = array;
+    } &lt;span class=&quot;keyword&quot;&gt;else&lt;/span&gt; {
+      &lt;span class=&quot;keyword&quot;&gt;this&lt;/span&gt;.tree = makeTree(array);
+    }
+  }
+
+  get(key) {
+    &lt;span class=&quot;keyword&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;keyword&quot;&gt;this&lt;/span&gt;.tree.get(key);
+  }
+
+  set(key, val) {
+    &lt;span class=&quot;keyword&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;keyword&quot;&gt;new&lt;/span&gt; List(&lt;span class=&quot;keyword&quot;&gt;this&lt;/span&gt;.tree.set(key, val));
+  }
+
+  iter*() {
+    &lt;span class=&quot;comment&quot;&gt;// Inorder transversal of tree.&lt;/span&gt;
+  }
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;h2 id=&quot;next-steps&quot;&gt;Next Steps&lt;/h2&gt;
+&lt;p&gt;There are lots of performance improvements which can be made over the previous section’s code, which
+was written with a goal of concision.
+In a future post, we’ll examine some of these and do some performance testing.&lt;/p&gt;
+</description>
+    </item>
+  </channel>
+</rss>

@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <meta name="viewport" content="width=device-width">
+    <title>Javascript Snippets: Async Programming and Monads - m.artin.io
+    </title>
+    <link rel="alternate" href="http://localhost:8080/feed.xml" type="application/rss+xml" title="">
+    <link rel="stylesheet" href="http://fonts.googleapis.com/css?family=Lora:400,700,400italic,700italic|Anonymous+Pro:400,700,400italic,700italic|Merriweather:400,700,300"><link href='http://fonts.googleapis.com/css?family=Inconsolata:400,700' rel='stylesheet' type='text/css'>
+    <link rel="stylesheet" href="//brick.a.ssl.fastly.net/Cardo:400,400i,700">
+    <link rel="stylesheet" href="/css/main.css">
+    <script type="text/javascript" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script><script>document.write('<script src="http://' + (location.host || 'localhost').split(':')[0] + ':35729/livereload.js?snipver=1"></' + 'script>')</script>
+    <script type="text/x-mathjax-config">MathJax.Hub.Config({tex2jax: {inlineMath: [['$','$'], ['\\(','\\)']]}});</script>
+  </head>
+  <body class="article-detail">
+    <header class="header">
+      <div class="content-wrap">
+        <h1>Javascript Snippets: Async Programming and Monads</h1>
+        <p class="author">2015-03-26</p>
+      </div>
+    </header>
+    <div id="content">
+      <div class="content-wrap">
+        <article class="article">
+          <section class="content"><p>Monads are roughly computation&nbsp;wrappers.</p>
+<p>used throughout&nbsp;Haskell.</p>
+<ul>
+<li><code>return/wrap</code>:&nbsp;wrap</li>
+<li><code>join/flatten</code>: Turn a doubly-wrapped element into a singly-wrapped&nbsp;element.</li>
+</ul>
+<h2 id="definitions">Definitions</h2>
+<h2 id="expressing-asynchronous-computation-as-a-monad">Expressing Asynchronous Computation as a&nbsp;Monad</h2>
+<p>Asynchronous computations may be thought of as a wrapper which cannot be unwrapped until after
+the computation finishes. For example, in the code below,&nbsp;the</p>
+<pre><code class="lang-javascript"><span class="function"><span class="keyword">function</span> <span class="title">delayLogSquare</span><span class="params">(x)</span> {</span>
+  setTimeout(<span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span> console.log(x * x); }, <span class="number">1000</span>);
+}
+delayLogSquare(<span class="number">4</span>); <span class="comment">// logs 16 after one second</span>
+</code></pre>
+<p>In the implementation below, we use the <code>curry</code> function defined <a href="/articles/async-monads/">in this post</a>.</p>
+<pre><code class="lang-javascript"><span class="keyword">var</span> Async = {};
+
+Async.wrap = curry(<span class="function"><span class="keyword">function</span> <span class="params">(value, callback)</span> {</span>
+  <span class="keyword">return</span> callback(value);
+});
+
+<span class="comment">// (a -&gt; b) -&gt; Async a -&gt; Async b</span>
+Async.fmap = curry(<span class="function"><span class="keyword">function</span> <span class="params">(fn, asyncA)</span> {</span>
+  <span class="keyword">return</span> <span class="function"><span class="keyword">function</span> <span class="params">(callbackB)</span> {</span>
+    <span class="keyword">return</span> asyncA(<span class="function"><span class="keyword">function</span> <span class="params">(value)</span> {</span>
+      <span class="keyword">return</span> callbackB(fn(value));
+    });
+  };
+});
+
+<span class="comment">// Async (Async a) -&gt; Async a</span>
+Async.join = <span class="function"><span class="keyword">function</span> <span class="params">(nestedAsync)</span> {</span>
+  <span class="keyword">return</span> <span class="function"><span class="keyword">function</span> <span class="params">(callback)</span> {</span>
+    <span class="keyword">return</span> nestedAsync(<span class="function"><span class="keyword">function</span> <span class="params">(callback2)</span> {</span>
+      <span class="keyword">return</span> callback2(callback);
+    })
+  }
+}
+</code></pre>
+<pre><code class="lang-javascript"><span class="comment">// Async a -&gt; (a -&gt; Async b) -&gt; Async b</span>
+Async.bind = curry(<span class="function"><span class="keyword">function</span> <span class="params">(asyncA, makeAsyncB)</span> {</span>
+  <span class="keyword">return</span> <span class="function"><span class="keyword">function</span> <span class="params">(callbackB)</span> {</span>
+    <span class="keyword">return</span> asyncA(<span class="function"><span class="keyword">function</span> <span class="params">(value)</span> {</span>
+      <span class="keyword">return</span> makeAsyncB(value)(callbackB);
+    })
+  };
+});
+</code></pre>
+<p>Let’s test&nbsp;this!</p>
+<pre><code class="lang-javascript"><span class="function"><span class="keyword">function</span> <span class="title">square</span><span class="params">(x)</span> {</span> <span class="keyword">return</span> x * x };
+
+<span class="function"><span class="keyword">function</span> <span class="title">squareThen</span><span class="params">(x)</span> {</span>
+  console.log(<span class="string">'squareThen'</span>, x);
+  <span class="keyword">return</span> <span class="function"><span class="keyword">function</span> <span class="params">(callback)</span> {</span>
+    console.log(callback);
+    <span class="keyword">return</span> callback(x * x);
+  };
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">delay</span> <span class="params">(callback)</span> {</span>
+  console.log(<span class="string">'delaying'</span>);
+  setTimeout(callback.bind(<span class="literal">null</span>, <span class="number">4</span>), <span class="number">20</span>);
+  <span class="keyword">return</span> <span class="number">4</span>;
+  <span class="comment">// return callback(4);</span>
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">asyncSquare</span><span class="params">(x, callback)</span> {</span>
+  <span class="keyword">return</span> setTimeout(callback.bind(<span class="literal">null</span>, x), <span class="number">20</span>);
+}
+
+<span class="function"><span class="keyword">function</span> <span class="title">fromCallbackFn</span><span class="params">(callbackFn)</span> {</span>
+  <span class="keyword">return</span> <span class="function"><span class="keyword">function</span> <span class="params">(callback)</span> {</span>
+    <span class="keyword">return</span> callbackFn(x, callback);
+  };
+}
+
+<span class="keyword">var</span> fmapSquare = Async.fmap(square);
+
+fmapSquare(Async.wrap(<span class="number">2</span>))(console.log.bind(console));
+</code></pre>
+</section>
+        </article>
+      </div>
+    </div>
+    <footer>
+      <div class="content-wrap">
+        <div class="nav"><a href="/">« Back</a></div>
+        <section class="about"><p>I work at <a href="http://www.kensho.com">Kensho</a>! A few projects I have contributed to include <a href="http://bookworm.culturomics.org/">bookworm</a> and <a href="http://crosswords.io">multiplayer crosswords</a>.</p>
+
+        </section>
+        <section class="copy">
+          <p>&copy; 2015 Martin Camacho &mdash; powered by&nbsp;<a href="https://github.com/jnordberg/wintersmith">Wintersmith</a>
+          </p>
+        </section>
+      </div>
+    </footer>
+  </body>
+</html>

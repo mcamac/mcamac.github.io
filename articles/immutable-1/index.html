@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <meta name="viewport" content="width=device-width">
+    <title>Javascript Snippets: Immutable Lists - m.artin.io
+    </title>
+    <link rel="alternate" href="http://localhost:8080/feed.xml" type="application/rss+xml" title="">
+    <link rel="stylesheet" href="http://fonts.googleapis.com/css?family=Lora:400,700,400italic,700italic|Anonymous+Pro:400,700,400italic,700italic|Merriweather:400,700,300"><link href='http://fonts.googleapis.com/css?family=Inconsolata:400,700' rel='stylesheet' type='text/css'>
+    <link rel="stylesheet" href="//brick.a.ssl.fastly.net/Cardo:400,400i,700">
+    <link rel="stylesheet" href="/css/main.css">
+    <script type="text/javascript" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script><script>document.write('<script src="http://' + (location.host || 'localhost').split(':')[0] + ':35729/livereload.js?snipver=1"></' + 'script>')</script>
+    <script type="text/x-mathjax-config">MathJax.Hub.Config({tex2jax: {inlineMath: [['$','$'], ['\\(','\\)']]}});</script>
+  </head>
+  <body class="article-detail">
+    <header class="header">
+      <div class="content-wrap">
+        <h1>Javascript Snippets: Immutable Lists</h1>
+        <p class="author">2015-04-27</p>
+      </div>
+    </header>
+    <div id="content">
+      <div class="content-wrap">
+        <article class="article">
+          <section class="content"><p>With the recent popularity of view frameworks such as React and Mercury, immutable data structures
+have become widespread choices for storing <span class="caps">UI</span> state. In this short post, we’ll examine the motivation for
+maintaining immutability and build a simple snippet for constructing reasonably performant immutable lists. For
+production usage, check out Facebook’s <a href="https://github.com/facebook/immutable-js">immutable.js</a>.</p>
+<h2 id="why-immutability-">Why&nbsp;Immutability?</h2>
+<p>In various view frameworks, view functions are just plain Javascript functions which take a object representing state
+and return a virtual <span class="caps">HTML</span>&nbsp;tree:</p>
+<pre><code class="lang-javascript"><span class="function"><span class="keyword">function</span> <span class="title">listView</span><span class="params">(list)</span> {</span>
+  <span class="keyword">return</span> h(<span class="string">'ul'</span>, list.map(item =&gt; h(<span class="string">'li'</span>, item)));
+}
+</code></pre>
+<p>If <code>listView</code> is used as a component of a large web-app, the <code>list</code> argument may be a nested property
+of a more complex state object. When the contents of <code>list</code> change, we want to re-render the list to
+reflect the new state, but when other properties of that object change, it would be nice to not
+have to re-compute the list&nbsp;view.</p>
+<p>In the second case, how can we see if the <code>list</code> argument has changed in a performant fashion? If <code>list</code> is a plain
+Javascript array and gets mutated elsewhere by <code>list[i] = val</code>, then the equality value of <code>list</code>
+itself has not changed. Thus, we can’t do a simple object equality <code>===</code> check but instead need the
+previous contents of the list, and equality checking would be $O(n)$ in the length
+of the&nbsp;list.</p>
+<p>Instead, we may be willing to take a slight performance hit on gets, sets, and iteration as long as equality
+checking takes constant time. We can use immutable data structures: structures type of <code>T</code> such that
+<code>T.set</code> returns a new object of type <code>T</code> (if the set changes the&nbsp;contents).</p>
+<h2 id="a-naive-implementation">A Naive&nbsp;Implementation</h2>
+<p>Below is a naive implementation where the list is&nbsp;copied</p>
+<pre><code class="lang-javascript"><span class="keyword">class</span> List {
+  constructor(array) {
+    <span class="keyword">this</span>.array = array;
+  }
+
+  get(key) {
+    <span class="keyword">return</span> <span class="keyword">this</span>.array[key];
+  }
+
+  set(key, val) {
+    <span class="keyword">var</span> newArray = <span class="keyword">this</span>.array.slice();
+    newArray[key] = val;
+    <span class="keyword">return</span> <span class="keyword">new</span> List(newArray);
+  }
+
+  iter*() {
+    <span class="keyword">for</span> (<span class="keyword">var</span> i = <span class="number">0</span>; i &lt; <span class="keyword">this</span>.array.length; i++) {
+      <span class="keyword">yield</span> <span class="keyword">this</span>.array[i];
+    }
+  }
+}
+</code></pre>
+<p>Note here that while <code>get</code> is $O(1)$, <code>set</code> is $O(n)$ in the length of the list. Can we do&nbsp;better?</p>
+<h2 id="trees">Trees</h2>
+<p>How can we improve the performance of <code>set</code>? Note that above, we are forced to copy the entire list
+into a new list. If we change our underlying data structure from a flat list to a tree, it turns out
+that we can get $O(\log n)$&nbsp;sets.</p>
+<p>There are two caveats: the first is that using trees slows gets to $O(\log n)$,
+and the second is that we incur a possibly nontrivial constant factor (around equal to branch size)
+for sets since we must copy the unchanged children of every tree node we&nbsp;touch.</p>
+<pre><code class="lang-javascript"><span class="keyword">var</span> <span class="caps">BRANCH</span> = <span class="number">8</span>;
+<span class="keyword">var</span> BRANCH_EXP = <span class="number">3</span>; <span class="comment">// 2^3 = 8 - used for bit shifts.</span>
+<span class="keyword">class</span> Tree {
+  constructor() {
+    <span class="keyword">this</span>.children = [];
+    <span class="keyword">this</span>.depth = <span class="number">0</span>;
+  }
+
+  get(key) {
+    <span class="keyword">if</span> (<span class="keyword">this</span>.depth === <span class="number">0</span> &amp;&amp; key &lt; <span class="caps">BRANCH</span>) {
+      <span class="keyword">return</span> <span class="keyword">this</span>.children[key];
+    } <span class="keyword">else</span> {
+      <span class="keyword">var</span> shift = BRANCH_EXP * <span class="keyword">this</span>.depth;
+      <span class="keyword">var</span> childSize = <span class="number">1</span> &lt;&lt; shift;
+      <span class="keyword">return</span> <span class="keyword">this</span>.children[key &gt;&gt;&gt; shift].get(key % childSize);
+    }
+  }
+
+  set(key, val) {
+    <span class="keyword">var</span> newChildren = <span class="keyword">this</span>.children.slice();
+    <span class="keyword">if</span> (<span class="keyword">this</span>.depth === <span class="number">0</span> &amp;&amp; key &lt; <span class="caps">BRANCH</span>) {
+      newChildren[key] = val;
+    } <span class="keyword">else</span> {
+      <span class="keyword">var</span> shift = BRANCH_EXP * <span class="keyword">this</span>.depth;
+      <span class="keyword">var</span> childSize = <span class="number">1</span> &lt;&lt; shift;
+      <span class="keyword">var</span> childIndex = key &gt;&gt;&gt; shift;
+      newChildren[childIndex] = newChildren[childIndex].set(key % childSize, val);
+    }
+    <span class="keyword">return</span> newChildren;
+  }
+}
+</code></pre>
+<p>We can now define the <code>List</code> class as&nbsp;follows:</p>
+<pre><code class="lang-javascript"><span class="keyword">class</span> List {
+  constructor(array) {
+    <span class="keyword">if</span> (array isinstance Tree) {
+      <span class="keyword">this</span>.tree = array;
+    } <span class="keyword">else</span> {
+      <span class="keyword">this</span>.tree = makeTree(array);
+    }
+  }
+
+  get(key) {
+    <span class="keyword">return</span> <span class="keyword">this</span>.tree.get(key);
+  }
+
+  set(key, val) {
+    <span class="keyword">return</span> <span class="keyword">new</span> List(<span class="keyword">this</span>.tree.set(key, val));
+  }
+
+  iter*() {
+    <span class="comment">// Inorder transversal of tree.</span>
+  }
+}
+</code></pre>
+<h2 id="next-steps">Next&nbsp;Steps</h2>
+<p>There are lots of performance improvements which can be made over the previous section’s code, which
+was written with a goal of concision.
+In a future post, we’ll examine some of these and do some performance&nbsp;testing.</p>
+</section>
+        </article>
+      </div>
+    </div>
+    <footer>
+      <div class="content-wrap">
+        <div class="nav"><a href="/">« Back</a></div>
+        <section class="about"><p>I work at <a href="http://www.kensho.com">Kensho</a>! A few projects I have contributed to include <a href="http://bookworm.culturomics.org/">bookworm</a> and <a href="http://crosswords.io">multiplayer crosswords</a>.</p>
+
+        </section>
+        <section class="copy">
+          <p>&copy; 2015 Martin Camacho &mdash; powered by&nbsp;<a href="https://github.com/jnordberg/wintersmith">Wintersmith</a>
+          </p>
+        </section>
+      </div>
+    </footer>
+  </body>
+</html>

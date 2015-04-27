@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <meta name="viewport" content="width=device-width">
+    <title>Javascript Snippets: A Short Intro to Currying - m.artin.io
+    </title>
+    <link rel="alternate" href="http://localhost:8080/feed.xml" type="application/rss+xml" title="">
+    <link rel="stylesheet" href="http://fonts.googleapis.com/css?family=Lora:400,700,400italic,700italic|Anonymous+Pro:400,700,400italic,700italic|Merriweather:400,700,300"><link href='http://fonts.googleapis.com/css?family=Inconsolata:400,700' rel='stylesheet' type='text/css'>
+    <link rel="stylesheet" href="//brick.a.ssl.fastly.net/Cardo:400,400i,700">
+    <link rel="stylesheet" href="/css/main.css">
+    <script type="text/javascript" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script><script>document.write('<script src="http://' + (location.host || 'localhost').split(':')[0] + ':35729/livereload.js?snipver=1"></' + 'script>')</script>
+    <script type="text/x-mathjax-config">MathJax.Hub.Config({tex2jax: {inlineMath: [['$','$'], ['\\(','\\)']]}});</script>
+  </head>
+  <body class="article-detail">
+    <header class="header">
+      <div class="content-wrap">
+        <h1>Javascript Snippets: A Short Intro to Currying</h1>
+        <p class="author">2015-03-24</p>
+      </div>
+    </header>
+    <div id="content">
+      <div class="content-wrap">
+        <article class="article">
+          <section class="content"><p><strong>Currying</strong>, named after <a href="http://en.wikipedia.org/wiki/Haskell_Curry">Haskell Curry</a> (who also gives his first name to the language Haskell),
+is an important functional programming&nbsp;concept.</p>
+<p>Let’s suppose we have a function <code>f</code> which takes three&nbsp;arguments:</p>
+<pre><code class="lang-javascript"><span class="function"><span class="keyword">function</span> <span class="title">f</span><span class="params">(x, y, z)</span> {</span> ... }
+</code></pre>
+<p>Currying yields a function <code>curriedF</code> such&nbsp;that</p>
+<pre><code>f(x, y, z) = curriedF(x)(y)(z)
+</code></pre><pre><code class="lang-javascript"><span class="function"><span class="keyword">function</span> <span class="title">curry</span><span class="params">(func)</span> {</span>
+  <span class="keyword">return</span> <span class="function"><span class="keyword">function</span> <span class="params">()</span> {</span>
+    <span class="keyword">if</span> (<span class="built_in">arguments</span>.length &gt;= func.length) {
+      <span class="comment">// Have all the arguments we need.</span>
+      <span class="keyword">return</span> func.apply(<span class="literal">null</span>, <span class="built_in">arguments</span>);
+    }
+    <span class="keyword">var</span> got = <span class="keyword">new</span> <span class="built_in">Array</span>(<span class="built_in">arguments</span>.length);
+    <span class="keyword">for</span> (<span class="keyword">var</span> i = <span class="number">0</span>; i &lt; <span class="built_in">arguments</span>.length; i++) {
+      got[i] = <span class="built_in">arguments</span>[i];
+    }
+    <span class="keyword">var</span> fnWithProvidedArgs = func.bind.apply(func, [<span class="literal">null</span>].concat(got));
+    fnWithProvidedArgs.length = func.length - got.length;
+    <span class="keyword">return</span> curry(fnWithProvidedArgs);
+  };
+}
+</code></pre>
+<h2 id="a-few-use-cases">A Few&nbsp;Use-Cases</h2>
+<pre><code class="lang-javascript"><span class="keyword">var</span> prop = curry(<span class="function"><span class="keyword">function</span><span class="params">(propName, obj)</span> {</span>
+  <span class="keyword">return</span> obj[propName];
+});
+<span class="keyword">var</span> people = [{ name: <span class="string">"Martin"</span> }, { name: <span class="string">"Mark"</span> }, { name: <span class="string">"Gleb"</span> }];
+people.map(prop(<span class="string">'name'</span>)) <span class="comment">// =&gt;</span>
+</code></pre>
+<p>One caveat is that …. see <a href="http://stackoverflow.com/questions/27996544/how-to-correctly-curry-a-function-in-javascript">this stackoverflow post</a> for further enlightening&nbsp;discussion.</p>
+</section>
+        </article>
+      </div>
+    </div>
+    <footer>
+      <div class="content-wrap">
+        <div class="nav"><a href="/">« Back</a></div>
+        <section class="about"><p>I work at <a href="http://www.kensho.com">Kensho</a>! A few projects I have contributed to include <a href="http://bookworm.culturomics.org/">bookworm</a> and <a href="http://crosswords.io">multiplayer crosswords</a>.</p>
+
+        </section>
+        <section class="copy">
+          <p>&copy; 2015 Martin Camacho &mdash; powered by&nbsp;<a href="https://github.com/jnordberg/wintersmith">Wintersmith</a>
+          </p>
+        </section>
+      </div>
+    </footer>
+  </body>
+</html>
